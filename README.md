@@ -1,34 +1,43 @@
 # TradeDesk
 
-Personal stock decision-support: for each stock you own or watch it tells you the macro backdrop,
-the company picture, the chart levels, and a position-aware plan (hold, trim, sell and rebuy lower,
-add on a pullback), with the exact price levels for each branch. It is not an auto-trader.
+Personal stock decision-support, built around resource stocks (uranium, gold, silver, copper) as well as ordinary
+equities. For each stock you own or watch it tells you the backdrop (the metal and sector, not just the S&P 500),
+the company picture, the chart levels on daily **and weekly/monthly** bars, and a position-aware plan (hold, trim,
+sell and rebuy lower, add on a pullback) with exact price levels for each branch. It can message your phone when a
+level is hit. It is not an auto-trader.
 
-## How it works
-1. **Engine (`tradedesk/technicals.py`)**: computes swings (ZigZag), support/resistance zones, Fibonacci
-   retracements/extensions with zone confluence, trend structure, RSI/MACD/ATR, volume, double tops/bottoms,
-   breakouts/breakdowns, RSI divergence. Levels come from price data, not from reading a picture.
-2. **Macro (`macro.py`)**: S&P trend, VIX, 10y yield, dollar, credit spread proxy, sector breadth/rotation -> regime score.
-3. **Plan (`plan.py`)**: transparent scoring (trend, momentum, macro, relative strength, reward/risk) plus your
-   cost basis, size and holding style -> stance, stop, targets, pullback/rebuy levels, alert prices.
-4. **Claude (`briefing.py`)**: writes the macro + micro + chart briefing from those computed facts, answers
-   follow-ups, and cross-checks a screenshot of any chart against the computed levels.
+## What's in it
+| Area | What it does |
+|---|---|
+| **Ticker handling** (`symbols.py`) | Type `DML` and it finds the listing Yahoo actually has (`DML.TO`), remembers it, and tells you about other listings (e.g. `DNN`). Shows the currency (CAD/AUD/GBp). Clear error with next steps if nothing matches. |
+| **Themes** (`profiles.py`, `macro.py`) | Auto-detects uranium / gold / silver / copper / oil / lithium / tech names (override per holding). Each theme tracks the metal (or proxy), sector ETFs, a bellwether, and dollar/yield headwinds. Resource stocks are scored on their metal first, the S&P at half weight. |
+| **What it moves with** | 90-day correlation and beta against the S&P, the metal, the ETFs and the bellwether. |
+| **Weekly & monthly** (`technicals.py`) | Same engine run on weekly/monthly bars: major support/resistance, Fib legs, trend. Weekly zones are outlined on the daily chart; the plan flags daily/weekly conflicts. |
+| **Volatility scaling** | Stops, minimum stop distance and "stretched" tests scale to each stock's own volatility (low/normal/high/extreme). |
+| **Backtest** (`backtest.py`) | Replays the stance through history using only what was known at each date, compares "follow the stance" with buy-and-hold, shows outcomes by stance, and checks stability (first 60% vs last 40%). A test proves it cannot see the future. |
+| **Data resilience** (`providers.py`, `data.py`) | Yahoo, then Polygon (optional key, US only), then Stooq. Last good copy is saved to disk and served (flagged stale) if every source is down. |
+| **News & events** (`news.py`, `events.py`) | Company and metal headlines (Google News RSS) plus Yahoo news; FOMC and jobs-report dates (approximate: verify), plus your own events in `data/events.json`. |
+| **Phone alerts** (`alerts.py`, `notify.py`, `run_alerts.py`) | Stop / rebuy / target hit, price within 1% of one, or stance change, via ntfy, Telegram or Discord. Fires once per level, re-arms after a full ATR. |
+| **Claude briefing** (`briefing.py`) | Writes the backdrop + company + chart briefing from the computed facts, answers follow-ups, and cross-checks a chart screenshot. It never invents numbers. |
 
 ## Run on Replit
-1. Create a new **Python** Repl and upload the contents of this `tradedesk/` folder to its root
-   (so `app.py` and `.replit` are at the top level).
-2. In **Secrets**, add `ANTHROPIC_API_KEY` (optional: the app works without it, you just lose the written briefing).
-3. Press **Run**. In **Holdings** add your tickers (shares = 0 for a watchlist name), then use **Portfolio**.
+1. Import this repo into Replit (Create Repl, Import from GitHub, `Letzgoyo/tradedesk`).
+2. In **Secrets** add `ANTHROPIC_API_KEY` (optional: everything except the written briefing works without it).
+3. Press **Run** (`start.sh` starts the alerts loop and the web app). Add your tickers under **Holdings**.
+4. For phone alerts, see the **Alerts** tab (ntfy takes two minutes). Free Repls sleep, so for dependable alerts use a
+   Replit Deployment, or run `python run_alerts.py` as a Scheduled Deployment.
 
 Locally: `pip install -r requirements.txt && streamlit run app.py`.
-CLI: `python cli.py NVDA --shares 20 --cost 110 --chart nvda.png --briefing`.
-Tests: `pytest` (they run on synthetic data; set `TRADEDESK_DEMO=1`, which `tests/conftest.py` does for you).
+CLI: `python cli.py DML --shares 100 --cost 2.10 --chart dml.png --briefing`, `python -m tradedesk.backtest DNN --years 5`.
+Tests: `pytest` (synthetic data; `tests/conftest.py` sets `TRADEDESK_DEMO=1`).
 
 ## Known limits (read these)
-- Data is **daily bars from Yahoo via `yfinance`**: free, delayed, unofficial, and it can rate-limit or break.
-  No intraday. The data layer is isolated in `data.py` so a paid provider (Polygon, Alpaca, Tiingo) is a one-file swap.
-- News is headlines only; there is **no economic calendar** (FOMC/CPI/jobs): check it yourself.
-- The scoring thresholds are sensible defaults, **not tuned or backtested**. Treat the stance as a structured
-  second opinion. A backtest harness is the natural next step.
+- **Not yet verified against live data.** Everything was built and tested on synthetic prices because the build sandbox
+  cannot reach Yahoo. Expect small fixes when it first meets real data. Yahoo is free and unofficial: it can rate-limit or change.
+- **Uranium spot isn't on Yahoo.** The Sprott Physical Uranium Trust (`U-UN.TO`) is the proxy. Futures (GC=F, SI=F, HG=F) are front-month.
+- **Scoring thresholds are defaults, not tuned.** Use the Backtest tab per stock; a backtest on one stock is a small sample,
+  and a good result is not a promise. Backtests on synthetic data mean nothing about real markets.
+- Daily bars, delayed; alerts check every 30 minutes, not tick by tick.
+- Event dates are approximate. News is headlines only.
 - Replit local files can be reset on redeploy. Keep a copy of `data/holdings.json`.
 - Analysis only, not personalised financial or tax advice.

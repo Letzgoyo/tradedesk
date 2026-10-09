@@ -13,20 +13,27 @@ def main() -> int:
     ap.add_argument("--shares", type=float, default=0)
     ap.add_argument("--cost", type=float, default=0)
     ap.add_argument("--horizon", default="position", choices=["swing", "position", "long_term"])
+    ap.add_argument("--theme", default="auto", help="auto, uranium, gold, silver, copper, energy, lithium, tech, broad")
     ap.add_argument("--chart", help="write annotated chart PNG here")
     ap.add_argument("--briefing", action="store_true", help="also stream the Claude briefing")
     ap.add_argument("--json", action="store_true", help="dump all facts as JSON")
     a = ap.parse_args()
 
     mac = macro.macro_regime()
-    an = analysis.analyze_ticker(a.ticker, mac, Position(a.ticker.upper(), a.shares, a.cost, a.horizon))
+    an = analysis.analyze_ticker(a.ticker, mac, Position(a.ticker.upper(), a.shares, a.cost, a.horizon, "", a.theme), theme_override=a.theme)
     if a.json:
         print(json.dumps(an.facts(), indent=1, default=str))
         return 0
     p = an.plan
-    print(f"\n{an.ticker} @ {an.tech.price:.2f} (as of {an.tech.asof}, data: {an.source})")
-    print(f"Macro: {mac['label']} | Trend: {an.tech.trend['label']} | RSI {an.tech.rsi:.0f}")
-    print(f"\n>>> {p['stance']}: {p['headline']}  (score {p['score']:+d})")
+    print(f"\n{an.ticker} @ {an.tech.price:.2f} {an.currency} (as of {an.tech.asof}, data: {an.source})")
+    if an.note:
+        print("Note:", an.note)
+    w = an.htf.get("W")
+    print(f"S&P regime: {mac['label']} | {an.theme['label']} backdrop: {an.theme.get('regime')} ({an.theme_how})")
+    print(f"Daily: {an.tech.trend['label']} | Weekly: {w.trend['label'] if w else 'n/a'} | RSI {an.tech.rsi:.0f} | volatility {an.tech.vol['class']} (~{an.tech.vol['atr_pct']}%/day)")
+    if an.drivers:
+        print("Moves with:", ", ".join(f"{d['symbol']} {d['corr']:+.2f}" for d in an.drivers[:3]))
+    print(f"\n>>> {p['stance']}: {p['headline']}  (score {p['score']:+d} of {p['max_score']})")
     for f in p["factors"]:
         print(f"   {f['score']:+d}  {f['factor']}: {f['why']}")
     print("\nPlan:")

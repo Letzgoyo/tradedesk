@@ -22,13 +22,20 @@ define them and what would invalidate your view. Never promise outcomes.
 - The investor decides between: hold, trim/sell, wait for a level then buy back, or add. Always land on a \
 clear recommendation for THEIR position (cost basis, size and horizon are in the facts when held), with \
 specific price levels for each branch, and explain where you agree or disagree with the rule_based_plan.
-- Macro first (is the tide helping or hurting?), then the stock's micro story (earnings date, fundamentals, \
-headlines), then the chart, then the plan. Keep it tight: short paragraphs and bullets, no filler, no \
+- Identify what really drives this stock from `theme` and `driver_correlations_90d`. For a resource stock \
+(uranium, gold, silver, copper, oil) the metal price, the sector ETF and the dollar/yields come BEFORE the S&P 500; \
+say so, and say whether the stock is leading or lagging its metal. Note the listing/currency if it is not US dollars.
+- Use the weekly and monthly structure for the MAJOR levels and the daily chart for timing. Call out when the \
+daily and weekly pictures disagree. Respect `volatility`: for a high-volatility name use wider stops and say so.
+- Mention `upcoming_events_verify_dates` only if they matter within the plan's horizon, and flag the dates as \
+unverified. If `data_is_stale` is true, say the prices are old and why that matters.
+- Macro first (is the tide helping or hurting, for THIS stock's world?), then the stock's micro story (earnings \
+date, fundamentals, company and theme headlines), then the chart, then the plan. Keep it tight: short paragraphs and bullets, no filler, no \
 generic disclaimers beyond one closing line that this is analysis, not personalised financial advice.
 
 Format (markdown):
 ## Bottom line
-## Macro
+## Backdrop (macro and theme)
 ## The company (micro)
 ## Chart read
 ## Plan: hold / trim / wait-and-rebuy
@@ -71,7 +78,7 @@ def _facts_block(facts: dict) -> str:
 
 def stream_briefing(facts: dict) -> Iterator[str]:
     msg = (_facts_block(facts) + "\n\nWrite the briefing for this investor. Today's data is as of "
-           + str(facts["technicals"]["asof"]) + ".")
+           + str(facts["technicals_daily"]["asof"]) + ".")
     return _stream(SYSTEM, [{"role": "user", "content": msg}])
 
 

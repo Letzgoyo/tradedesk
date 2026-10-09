@@ -1,4 +1,4 @@
-run = "streamlit run app.py --server.port 8080 --server.address 0.0.0.0 --server.headless true"
+run = "sh start.sh"
 entrypoint = "app.py"
 modules = ["python-3.11"]
 
@@ -6,7 +6,7 @@ modules = ["python-3.11"]
 channel = "stable-24_05"
 
 [deployment]
-run = ["sh", "-c", "streamlit run app.py --server.port 8080 --server.address 0.0.0.0 --server.headless true"]
+run = ["sh", "start.sh"]
 deploymentTarget = "cloudrun"
 
 [[ports]]

@@ -18,5 +18,5 @@ def run(page, tmp_path, monkeypatch):
 
 
 def test_every_page_renders(tmp_path, monkeypatch):
-    for page in ("Portfolio", "Stock", "Market", "Holdings"):
+    for page in ("Portfolio", "Stock", "Themes", "Market", "Backtest", "Alerts", "Holdings"):
         run(page, tmp_path, monkeypatch)

@@ -9,6 +9,14 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+# Per-timeframe settings: swing sensitivity, MA lengths (fast, mid, slow), MA-slope window, Fib look-back,
+# bars in a "year", and the bar counts used for the 1-bar / ~1-month / ~3-month changes.
+TF_PARAMS = {
+    "D": dict(atr_mult=2.5, min_pct=0.025, mas=(20, 50, 200), slope_n=20, fib_lookback=200, year=252, chg=(1, 21, 63)),
+    "W": dict(atr_mult=2.5, min_pct=0.07, mas=(10, 30, 40), slope_n=8, fib_lookback=150, year=52, chg=(1, 4, 13)),
+    "M": dict(atr_mult=2.0, min_pct=0.12, mas=(6, 12, 24), slope_n=4, fib_lookback=60, year=12, chg=(1, 3, 6)),
+}
+TF_NAMES = {"D": "daily", "W": "weekly", "M": "monthly"}
 FIB_RETRACE = (0.236, 0.382, 0.5, 0.618, 0.786)
 FIB_EXTEND = (1.272, 1.618)
 
@@ -52,7 +60,7 @@ class Swing:
     confirmed: bool = True
 
 
-def find_swings(df: pd.DataFrame, atr_mult: float = 2.5, min_pct: float = 0.04) -> list[Swing]:
+def find_swings(df: pd.DataFrame, atr_mult: float = 2.5, min_pct: float = 0.025) -> list[Swing]:
     """ZigZag: a swing is confirmed once price reverses by max(atr_mult*ATR, min_pct*price).
     The final swing is returned unconfirmed (the leg price is currently making)."""
     hi, lo, cl = df["High"].values, df["Low"].values, df["Close"].values
@@ -143,8 +151,8 @@ def pick_fib_leg(swings: list[Swing], n: int, lookback: int = 200):
     return max(legs[-4:], key=lambda ab: abs(ab[1].price - ab[0].price) / ab[0].price)
 
 
-def fib_levels(swings: list[Swing], price: float, n: int, zones: list[Zone]) -> dict | None:
-    leg = pick_fib_leg(swings, n)
+def fib_levels(swings: list[Swing], price: float, n: int, zones: list[Zone], lookback: int = 200) -> dict | None:
+    leg = pick_fib_leg(swings, n, lookback)
     if not leg:
         return None
     a, b = leg
@@ -179,10 +187,10 @@ def fib_levels(swings: list[Swing], price: float, n: int, zones: list[Zone]) -> 
 
 
 # ---------------------------------------------------------------- trend / patterns
-def trend_state(df: pd.DataFrame, swings: list[Swing]) -> dict:
+def trend_state(df: pd.DataFrame, swings: list[Swing], mas=(20, 50, 200), slope_n: int = 20) -> dict:
     c = df["Close"]
     price = float(c.iloc[-1])
-    s20, s50, s200 = sma(c, 20), sma(c, 50), sma(c, 200)
+    s20, s50, s200 = sma(c, mas[0]), sma(c, mas[1]), sma(c, mas[2])
     conf = [s for s in swings if s.confirmed]
     highs = [s for s in conf if s.kind == "H"][-2:]
     lows = [s for s in conf if s.kind == "L"][-2:]
@@ -200,18 +208,18 @@ def trend_state(df: pd.DataFrame, swings: list[Swing]) -> dict:
             structure, sscore = "lower highs (lows flat/higher)", -1
     mscore = 0
     notes = []
-    for name, s in (("50-day", s50), ("200-day", s200)):
+    for name, s in ((f"{mas[1]}-bar", s50), (f"{mas[2]}-bar", s200)):
         if pd.notna(s.iloc[-1]):
             above = price > s.iloc[-1]
             mscore += 1 if above else -1
             notes.append(f"price {'above' if above else 'below'} {name} MA")
     if pd.notna(s200.iloc[-1]) and pd.notna(s50.iloc[-1]):
         mscore += 1 if s50.iloc[-1] > s200.iloc[-1] else -1
-        notes.append("50MA " + ("above" if s50.iloc[-1] > s200.iloc[-1] else "below") + " 200MA")
-    if pd.notna(s50.iloc[-1]) and len(s50.dropna()) > 20:
-        rising = s50.iloc[-1] > s50.dropna().iloc[-20]
+        notes.append(f"{mas[1]}MA " + ("above" if s50.iloc[-1] > s200.iloc[-1] else "below") + f" {mas[2]}MA")
+    if pd.notna(s50.iloc[-1]) and len(s50.dropna()) > slope_n:
+        rising = s50.iloc[-1] > s50.dropna().iloc[-slope_n]
         mscore += 1 if rising else -1
-        notes.append("50MA " + ("rising" if rising else "falling"))
+        notes.append(f"{mas[1]}MA " + ("rising" if rising else "falling"))
     score = int(np.clip(sscore + mscore, -5, 5))
     label = ("Strong uptrend" if score >= 4 else "Uptrend" if score >= 2 else "Weak uptrend / base" if score == 1
              else "Range / transition" if score == 0 else "Weak downtrend" if score == -1
@@ -264,6 +272,18 @@ def detect_patterns(df: pd.DataFrame, swings: list[Swing], zones: list[Zone], re
     return out
 
 
+# ---------------------------------------------------------------- volatility
+def vol_profile(df: pd.DataFrame) -> dict:
+    """How jumpy is this stock? Stops, 'stretched' tests and sizing advice scale with this."""
+    price = float(df["Close"].iloc[-1])
+    atr_pct = 100 * float(atr(df).iloc[-1]) / price
+    lr = np.log(df["Close"]).diff().dropna().tail(60)
+    ann = float(lr.std() * np.sqrt(252) * 100) if len(lr) > 10 else 0.0
+    cls = "low" if atr_pct < 1.5 else "normal" if atr_pct < 3 else "high" if atr_pct < 5 else "extreme"
+    return {"class": cls, "atr_pct": round(atr_pct, 2), "ann_vol_pct": round(ann, 1),
+            "typical_month_move_pct": round(float(ann / np.sqrt(12)), 1)}
+
+
 # ---------------------------------------------------------------- report
 def _r(x, d=2):
     return None if x is None or (isinstance(x, float) and np.isnan(x)) else round(float(x), d)
@@ -290,6 +310,8 @@ class TechReport:
     chg_1d: float
     chg_1m: float
     chg_3m: float
+    tf: str = "D"
+    vol: dict | None = None
     series: dict = field(default_factory=dict, repr=False)
 
     @property
@@ -304,6 +326,7 @@ class TechReport:
         z = lambda zz: {"zone": [round(zz.low, 2), round(zz.high, 2)], "center": round(zz.center, 2),
                         "touches": zz.touches, "flip_zone": zz.flip, "dist_pct": round(100 * zz.dist_pct, 1)}
         return {
+            "timeframe": TF_NAMES.get(self.tf, self.tf), "volatility": self.vol,
             "price": round(self.price, 2), "asof": self.asof, "atr_14": round(self.atr, 2),
             "atr_pct": round(100 * self.atr / self.price, 2),
             "change_pct": {"1d": self.chg_1d, "1m": self.chg_1m, "3m": self.chg_3m},
@@ -321,12 +344,13 @@ class TechReport:
         }
 
 
-def analyze(df: pd.DataFrame) -> TechReport:
+def analyze(df: pd.DataFrame, tf: str = "D") -> TechReport:
+    P = TF_PARAMS[tf]
     c = df["Close"]
     price = float(c.iloc[-1])
     a_s = atr(df)
     a = float(a_s.iloc[-1])
-    swings = find_swings(df)
+    swings = find_swings(df, P["atr_mult"], P["min_pct"])
     zones = sr_zones(df, [s for s in swings if s.confirmed], a)  # untested provisional extreme is not a level
     n = len(df)
     r_s = rsi(c)
@@ -337,15 +361,18 @@ def analyze(df: pd.DataFrame) -> TechReport:
         macd_state = "bearish (MACD below signal, histogram " + ("rising)" if hist.iloc[-1] > hist.iloc[-2] else "falling)")
     vol20 = df["Volume"].rolling(20).mean().iloc[-1]
     relvol = float(df["Volume"].iloc[-1] / vol20) if vol20 and vol20 > 0 else 1.0
-    yr = df.iloc[-252:]
+    yr = df.iloc[-P["year"]:]
     hi52, lo52 = float(yr["High"].max()), float(yr["Low"].min())
+    b1, bm, bq = P["chg"]
     chg = lambda k: round(100 * (price / float(c.iloc[-1 - k]) - 1), 2) if n > k else 0.0
-    ext = (price - float(ema(c, 20).iloc[-1])) / a if a else 0.0
+    ext = (price - float(ema(c, P["mas"][0]).iloc[-1])) / a if a else 0.0
     return TechReport(
-        price=price, asof=str(df.index[-1].date()), atr=a, trend=trend_state(df, swings), rsi=float(r_s.iloc[-1]),
+        price=price, asof=str(df.index[-1].date()), atr=a,
+        trend=trend_state(df, swings, P["mas"], P["slope_n"]), rsi=float(r_s.iloc[-1]),
         macd_state=macd_state, relvol=relvol, extension_atr=float(ext), high_52w=hi52, low_52w=lo52,
         pct_from_high=100 * (price / hi52 - 1), swings=swings, zones=zones,
-        fib=fib_levels(swings, price, n, zones), patterns=detect_patterns(df, swings, zones, relvol),
-        divergence=divergence(df, swings, r_s), chg_1d=chg(1), chg_1m=chg(21), chg_3m=chg(63),
-        series={"sma20": sma(c, 20), "sma50": sma(c, 50), "sma200": sma(c, 200), "rsi": r_s},
+        fib=fib_levels(swings, price, n, zones, P["fib_lookback"]), patterns=detect_patterns(df, swings, zones, relvol),
+        divergence=divergence(df, swings, r_s), chg_1d=chg(b1), chg_1m=chg(bm), chg_3m=chg(bq), tf=tf,
+        vol=vol_profile(df) if tf == "D" else None,
+        series={"sma20": sma(c, P["mas"][0]), "sma50": sma(c, P["mas"][1]), "sma200": sma(c, P["mas"][2]), "rsi": r_s},
     )

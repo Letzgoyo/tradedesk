@@ -8,7 +8,7 @@ import zlib
 import numpy as np
 import pandas as pd
 
-from . import config
+from . import config, providers, symbols
 
 COLS = ["Open", "High", "Low", "Close", "Volume"]
 _cache: dict = {}
@@ -33,10 +33,15 @@ def _clean(df: pd.DataFrame) -> pd.DataFrame:
 _SYN_BASE = {  # symbol: (start level, daily vol, mean-reverting?)
     "^VIX": (18.0, 0.05, True), "^TNX": (4.2, 0.012, True), "DX-Y.NYB": (102.0, 0.004, True),
     "SPY": (450.0, 0.010, False),
+    "GC=F": (2300.0, 0.009, False), "SI=F": (28.0, 0.016, False), "HG=F": (4.3, 0.012, False),
 }
 
 
-def synthetic_prices(symbol: str, n: int = 520) -> pd.DataFrame:
+def _years(period: str) -> float:
+    return float(period[:-1]) if period.endswith("y") and period[:-1].isdigit() else 2.0
+
+
+def synthetic_prices(symbol: str, n: int = 2600) -> pd.DataFrame:
     rng = np.random.default_rng(zlib.crc32(symbol.encode()))
     base, vol, mean_rev = _SYN_BASE.get(symbol, (float(rng.uniform(40, 300)), float(rng.uniform(0.012, 0.022)), False))
     rets = np.zeros(n)
@@ -63,27 +68,88 @@ def synthetic_prices(symbol: str, n: int = 520) -> pd.DataFrame:
     return df
 
 
-def get_prices(ticker: str, period: str = "2y") -> pd.DataFrame:
+def _cache_file(ticker: str, period: str):
+    safe = "".join(ch if ch.isalnum() else "_" for ch in ticker.upper())
+    return config.DATA_DIR / "cache" / f"{safe}_{period}.csv"
+
+
+def _write_disk(ticker: str, period: str, df: pd.DataFrame) -> None:
+    try:
+        f = _cache_file(ticker, period)
+        f.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(f)
+    except OSError:
+        pass
+
+
+def _read_disk(ticker: str, period: str) -> pd.DataFrame | None:
+    try:
+        df = pd.read_csv(_cache_file(ticker, period), index_col=0, parse_dates=True)
+        return _clean(df) if len(df) >= 60 else None
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def get_prices(ticker: str, period: str = "10y") -> pd.DataFrame:
+    """Daily OHLCV for an exact symbol. Tries each provider, then falls back to the last good
+    on-disk copy (flagged stale) rather than failing when the network or Yahoo is down."""
     key = (ticker.upper(), period)
     hit = _cache.get(key)
     if hit and time.time() - hit[0] < config.PRICE_TTL_SECONDS:
         return hit[1]
-    try:
-        import yfinance as yf
-        raw = yf.Ticker(ticker).history(period=period, interval="1d", auto_adjust=True)
-        if raw is None or raw.empty:
-            raise DataError(f"No price data returned for {ticker}")
-        df = _clean(raw)
-        df.attrs["source"] = "yfinance"
-    except Exception as exc:  # network, rate limit, bad ticker
-        if config.DEMO:
-            df = synthetic_prices(ticker.upper())
-        else:
-            raise DataError(f"Could not load prices for {ticker}: {exc}") from exc
-    if len(df) < 60:
-        raise DataError(f"Only {len(df)} bars for {ticker}; need at least 60")
+    errors: list[str] = []
+    df = None
+    if config.DEMO:
+        df = synthetic_prices(ticker.upper(), n=int(252 * _years(period)))
+    else:
+        for name, fn in providers.chain():
+            try:
+                raw = fn(ticker, period)
+                cand = _clean(raw)
+                if len(cand) < 60:
+                    raise DataError(f"only {len(cand)} bars")
+                cand.attrs["source"] = name
+                df = cand
+                _write_disk(ticker, period, df)
+                break
+            except Exception as exc:
+                errors.append(f"{name}: {str(exc)[:80]}")
+        if df is None:
+            old = _read_disk(ticker, period)
+            if old is not None:
+                old.attrs["source"] = f"stale cache (last bar {old.index[-1].date()})"
+                old.attrs["stale"] = True
+                df = old
+    if df is None:
+        raise DataError(f"Could not load prices for {ticker} ({'; '.join(errors) or 'no providers'})")
     _cache[key] = (time.time(), df)
     return df
+
+
+def find_prices(query: str, period: str = "10y"):
+    """Like get_prices but accepts loose input ('DML', 'denison') and resolves the right listing.
+    Returns (symbol, frame, note)."""
+    if config.DEMO:
+        q = query.strip().upper()
+        return q, get_prices(q, period), ""
+    try:
+        return symbols.resolve(query, lambda sym: get_prices(sym, period))
+    except LookupError as exc:
+        raise DataError(str(exc)) from exc
+
+
+def resample(df: pd.DataFrame, tf: str) -> pd.DataFrame:
+    """Daily -> weekly ('W') or monthly ('M') bars. The latest bar is the period in progress."""
+    rules = {"W": ["W-FRI"], "M": ["ME", "M"]}[tf]
+    agg = {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
+    for rule in rules:
+        try:
+            out = df.resample(rule).agg(agg).dropna(subset=["Close"])
+            out.attrs.update(df.attrs)
+            return out
+        except ValueError:
+            continue
+    raise DataError(f"cannot resample to {tf}")
 
 
 def _get(d: dict, *keys):

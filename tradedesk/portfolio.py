@@ -13,6 +13,7 @@ class Position:
     cost_basis: float = 0.0
     horizon: str = "position"  # swing | position | long_term
     notes: str = ""
+    theme: str = "auto"  # auto | uranium | gold | silver | copper | ... (see profiles.THEMES)
 
     @property
     def held(self) -> bool:
