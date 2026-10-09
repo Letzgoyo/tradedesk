@@ -156,3 +156,25 @@ def test_notify_channels_and_error_isolation(monkeypatch):
     monkeypatch.setattr(notify, "_post", boom)
     res = notify.send("t", "b")
     assert all(not r["ok"] for r in res)  # reported, not raised
+
+
+def test_seed_holdings_load_until_user_saves(tmp_data, monkeypatch):
+    from tradedesk import config, portfolio
+    seed = tmp_data / "seed.json"
+    seed.write_text(json.dumps([{"ticker": "AAA", "shares": 5, "cost_basis": 2.5, "theme": "gold"}]))
+    monkeypatch.setattr(config, "SEED_FILE", seed)
+    assert [p.ticker for p in portfolio.load()] == ["AAA"]            # no saved file: starter list
+    portfolio.save([portfolio.Position("BBB", 1, 1)])
+    assert [p.ticker for p in portfolio.load()] == ["BBB"]            # your own save wins
+    monkeypatch.setattr(config, "SEED_FILE", tmp_data / "missing.json")
+    (tmp_data / "holdings.json").unlink()
+    assert portfolio.load() == []
+
+
+def test_real_seed_file_is_consistent_with_the_screenshot():
+    from tradedesk import config, portfolio
+    pos = {p.ticker: p for p in portfolio._read(config.SEED_FILE)}
+    assert len(pos) == 9
+    assert round(pos["DML.TO"].shares * pos["DML.TO"].cost_basis) == 1970      # matches broker cost basis
+    assert round(pos["VCU.V"].shares * pos["VCU.V"].cost_basis) == 1696
+    assert round(pos["ELE.TO"].shares * pos["ELE.TO"].cost_basis) == 1714

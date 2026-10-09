@@ -1,0 +1,74 @@
+[
+  {
+    "ticker": "BTO.TO",
+    "shares": 45,
+    "cost_basis": 5.306,
+    "horizon": "position",
+    "notes": "B2Gold (TSX, CAD)",
+    "theme": "gold"
+  },
+  {
+    "ticker": "DML.TO",
+    "shares": 455,
+    "cost_basis": 4.33,
+    "horizon": "position",
+    "notes": "Denison Mines (TSX, CAD)",
+    "theme": "uranium"
+  },
+  {
+    "ticker": "ELE.TO",
+    "shares": 70,
+    "cost_basis": 24.479,
+    "horizon": "position",
+    "notes": "Elemental Royalty (TSX, CAD)",
+    "theme": "gold"
+  },
+  {
+    "ticker": "IE.TO",
+    "shares": 40,
+    "cost_basis": 13.05,
+    "horizon": "position",
+    "notes": "Ivanhoe Electric (TSX, CAD)",
+    "theme": "copper"
+  },
+  {
+    "ticker": "IVN.TO",
+    "shares": 180,
+    "cost_basis": 11.535,
+    "horizon": "position",
+    "notes": "Ivanhoe Mines (TSX, CAD)",
+    "theme": "copper"
+  },
+  {
+    "ticker": "PSIL.CN",
+    "shares": 575,
+    "cost_basis": 1.186,
+    "horizon": "position",
+    "notes": "Pacifica Silver (CSE via PURE, CAD)",
+    "theme": "silver"
+  },
+  {
+    "ticker": "UROY",
+    "shares": 270,
+    "cost_basis": 4.018,
+    "horizon": "position",
+    "notes": "Uranium Royalty (NASDAQ, USD)",
+    "theme": "uranium"
+  },
+  {
+    "ticker": "VCU.V",
+    "shares": 1425,
+    "cost_basis": 1.19,
+    "horizon": "position",
+    "notes": "Vizsla Copper (TSXV, CAD)",
+    "theme": "copper"
+  },
+  {
+    "ticker": "VZLA.TO",
+    "shares": 100,
+    "cost_basis": 4.46,
+    "horizon": "position",
+    "notes": "Vizsla Silver (TSX, CAD)",
+    "theme": "silver"
+  }
+]

@@ -110,3 +110,15 @@ def test_events_window_and_custom_file(tmp_data):
     assert [e["date"] for e in ev] == sorted(e["date"] for e in ev)
     assert all("2026-10-09" <= e["date"] <= "2026-11-18" for e in ev)
     assert "US CPI" not in [e["event"] for e in events.upcoming(days=30, today=date(2026, 10, 9))]  # outside a 30-day window
+
+
+def test_wrong_venue_suffix_tries_other_venues():
+    c = symbols.candidates("PSIL.CN", search=lambda q: [])
+    assert c[0] == "PSIL.CN" and "PSIL.NE" in c and "PSIL.TO" in c and "PSIL.V" in c
+
+
+def test_your_holdings_are_classified_as_expected():
+    expected = {"BTO.TO": "gold", "DML.TO": "uranium", "ELE.TO": "gold", "IE.TO": "copper", "IVN.TO": "copper",
+                "PSIL.CN": "silver", "UROY": "uranium", "VCU.V": "copper", "VZLA.TO": "silver"}
+    for sym, theme in expected.items():
+        assert profiles.detect_theme(sym)[0] == theme, sym

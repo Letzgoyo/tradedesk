@@ -23,12 +23,25 @@ class Position:
 HORIZONS = ("swing", "position", "long_term")
 
 
+def _read(path) -> list[Position]:
+    raw = json.loads(path.read_text())
+    return [Position(**{k: v for k, v in r.items() if k in Position.__dataclass_fields__}) for r in raw]
+
+
 def load() -> list[Position]:
+    """Your saved holdings; until you save any, the starter list in holdings.seed.json (if present)."""
     try:
-        raw = json.loads(config.HOLDINGS_FILE.read_text())
-        return [Position(**{k: v for k, v in r.items() if k in Position.__dataclass_fields__}) for r in raw]
+        return _read(config.HOLDINGS_FILE)
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+    try:
+        return _read(config.SEED_FILE)
     except (FileNotFoundError, json.JSONDecodeError):
         return []
+
+
+def has_seed() -> bool:
+    return config.SEED_FILE.exists()
 
 
 def save(positions: list[Position]) -> None:

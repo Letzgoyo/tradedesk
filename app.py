@@ -86,6 +86,12 @@ def page_holdings():
                                                       help="What drives this stock. 'auto' detects uranium/gold/silver/copper miners."),
             "notes": st.column_config.TextColumn("Notes"),
         })
+    if portfolio.has_seed() and not config.HOLDINGS_FILE.exists():
+        st.info("Showing the starter holdings from holdings.seed.json. Press Save to keep them as your own.")
+    elif portfolio.has_seed() and st.button("Reload starter holdings (replaces what's above)"):
+        portfolio.save(portfolio._read(config.SEED_FILE))
+        st.cache_resource.clear()
+        st.rerun()
     if st.button("Save", type="primary"):
         new = [Position(str(r.ticker).strip().upper(), float(r.shares or 0), float(r.cost_basis or 0),
                         r.horizon if r.horizon in HORIZONS else "position", str(r.notes or ""),
@@ -130,7 +136,7 @@ def page_portfolio():
         sup = t.supports[0].center if t.supports else None
         res = t.resistances[0].center if t.resistances else None
         w = an.htf.get("W")
-        rows.append({"": icon(pl["stance"]), "Ticker": an.ticker, "Ccy": an.currency, "Price": round(t.price, 2),
+        rows.append({"": icon(pl["stance"]), "Ticker": an.ticker, "Name": an.name, "Ccy": an.currency, "Price": round(t.price, 2),
                      "1d %": t.chg_1d, "P/L %": pnl["pct"] if pnl else None, "Value": pnl["value"] if pnl else None,
                      "Theme": an.theme.get("label"), f"Theme backdrop": an.theme.get("regime"),
                      "Daily": t.trend["label"], "Weekly": w.trend["label"] if w else "n/a",
@@ -192,6 +198,8 @@ def page_stock():
     except data.DataError as e:
         st.error(str(e)); return
     t, pl = an.tech, an.plan
+    if an.name:
+        st.caption(f"{an.name} ({an.ticker}). Check this is the company you hold: Yahoo reuses short tickers across exchanges.")
     if an.note:
         st.info(an.note + f". Prices are in {an.currency}.")
     if an.stale:

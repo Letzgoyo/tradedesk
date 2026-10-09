@@ -40,6 +40,9 @@ def candidates(query: str, search: Callable[[str], list] = search_yahoo) -> list
     out += [s for s, _ in search(q)]
     if "." not in q and not q.startswith("^") and "=" not in q:
         out += [q + s for s in SUFFIXES]
+    elif "." in q and "." + q.rsplit(".", 1)[1] in SUFFIXES:  # wrong venue suffix: same ticker, other venues
+        base = q.rsplit(".", 1)[0]
+        out += [base + s for s in SUFFIXES]
     seen: list[str] = []
     for s in out:
         if s and s not in seen:

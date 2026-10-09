@@ -32,6 +32,7 @@ class Analysis:
     note: str = ""
     currency: str = "USD"
     stale: bool = False
+    name: str = ""
 
     def facts(self) -> dict:
         """Everything the briefing is allowed to talk about, JSON-safe."""
@@ -43,7 +44,7 @@ class Analysis:
                 f.pop(k, None)
             return f
         return {
-            "ticker": self.ticker, "listing_note": self.note, "currency": self.currency,
+            "ticker": self.ticker, "company_name": self.name, "listing_note": self.note, "currency": self.currency,
             "data_source": self.source, "data_is_stale": self.stale,
             "theme": {"name": self.theme.get("theme"), "how_detected": self.theme_how,
                       "regime": self.theme.get("regime"), "components": self.theme.get("components"),
@@ -152,4 +153,5 @@ def analyze_ticker(query: str, mac: dict, pos: Position | None = None, with_micr
     pl = plan_mod.build_plan(tech, mac, rs, pos, theme=th, htf=htf)
     return Analysis(symbol, query.strip().upper(), df, dfw, tech, htf, mac, th, how, drv, rs, micro, nws,
                     events.upcoming(21), pl, full.attrs.get("source", "unknown"), note,
-                    symbols.currency_for(symbol), bool(full.attrs.get("stale")))
+                    symbols.currency_for(symbol), bool(full.attrs.get("stale")),
+                    (micro.get("fundamentals") or {}).get("shortName", ""))
